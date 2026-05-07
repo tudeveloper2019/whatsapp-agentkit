@@ -59,7 +59,7 @@ async def main():
         historial = await obtener_historial(TELEFONO_TEST)
 
         if solicita_menu(mensaje):
-            print("\n  📸 [Imagen del menú — menu.png]")
+            print("\n  📄 [PDF del menú — menu.pdf]")
             respuesta = "¡Aquí está nuestro menú completo! 🍽️😊 ¿Hay algo que te llame la atención o te gustaría pedir?"
             print(f"\nSofía: {respuesta}")
         else:
