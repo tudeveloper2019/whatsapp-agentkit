@@ -50,11 +50,13 @@ async def transcribir_audio(audio_url: str) -> str | None:
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
 
     try:
-        # Descargar audio con autenticación Twilio
-        async with httpx.AsyncClient(timeout=30) as http:
+        # Descargar audio siguiendo redirects (Twilio responde 307 antes de la URL final)
+        logger.info(f"Descargando audio: {audio_url}")
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
             r = await http.get(audio_url, auth=(account_sid, auth_token))
+            logger.info(f"Descarga completada — status: {r.status_code} | content-type: {r.headers.get('content-type')} | tamaño: {len(r.content)} bytes")
             if r.status_code != 200:
-                logger.error(f"Error descargando audio de Twilio: {r.status_code}")
+                logger.error(f"Error descargando audio de Twilio: status {r.status_code}")
                 return None
             audio_bytes = r.content
             content_type = r.headers.get("content-type", "audio/ogg")
