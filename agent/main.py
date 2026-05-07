@@ -24,8 +24,7 @@ proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8000))
 BASE_URL = os.getenv("BASE_URL", f"http://localhost:{PORT}")
 
-MENU_IMG_1 = f"{BASE_URL}/static/menu/menu1.jpeg"
-MENU_IMG_2 = f"{BASE_URL}/static/menu/menu2.png"
+MENU_IMG = f"{BASE_URL}/static/menu/menu.png"
 
 # Palabras que indican que el cliente quiere ver el menú completo
 KEYWORDS_MENU = ["menú", "menu", "carta", "qué tienen de comer", "que tienen de comer"]
@@ -88,9 +87,7 @@ async def webhook_handler(request: Request):
             historial = await obtener_historial(msg.telefono)
 
             if solicita_menu(msg.texto):
-                # Enviar las 2 imágenes del menú
-                await proveedor.enviar_media(msg.telefono, MENU_IMG_1)
-                await proveedor.enviar_media(msg.telefono, MENU_IMG_2)
+                await proveedor.enviar_media(msg.telefono, MENU_IMG)
                 respuesta = "¡Aquí está nuestro menú completo! 🍽️😊 ¿Hay algo que te llame la atención o te gustaría pedir?"
             else:
                 respuesta = await generar_respuesta(msg.texto, historial)
