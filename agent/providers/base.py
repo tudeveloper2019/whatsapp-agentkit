@@ -13,6 +13,8 @@ class MensajeEntrante:
     texto: str
     mensaje_id: str
     es_propio: bool
+    audio_url: str = ""
+    audio_content_type: str = ""
 
 
 class ProveedorWhatsApp(ABC):

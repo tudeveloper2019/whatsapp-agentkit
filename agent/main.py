@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from agent.brain import generar_respuesta
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
 from agent.providers import obtener_proveedor
+from agent.transcriber import transcribir_audio, MENSAJE_FALLO as AUDIO_FALLO
 
 load_dotenv()
 
@@ -26,7 +27,6 @@ BASE_URL = os.getenv("BASE_URL", f"http://localhost:{PORT}")
 
 MENU_PDF = f"{BASE_URL}/static/menu/menu.pdf"
 
-# Palabras que indican que el cliente quiere ver el menú completo
 KEYWORDS_MENU = ["menú", "menu", "carta", "qué tienen de comer", "que tienen de comer"]
 
 
@@ -37,7 +37,6 @@ def solicita_menu(texto: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicializa la base de datos al arrancar el servidor."""
     await inicializar_db()
     logger.info("Base de datos inicializada")
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")
@@ -56,13 +55,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def health_check():
-    """Endpoint de salud para Railway/monitoreo."""
     return {"status": "ok", "agente": "Sofía", "negocio": "El Cortijo Parque Acuático"}
 
 
 @app.get("/webhook")
 async def webhook_verificacion(request: Request):
-    """Verificación GET del webhook (requerido por Meta Cloud API, no-op para Twilio)."""
     resultado = await proveedor.validar_webhook(request)
     if resultado is not None:
         return PlainTextResponse(str(resultado))
@@ -73,26 +70,45 @@ async def webhook_verificacion(request: Request):
 async def webhook_handler(request: Request):
     """
     Recibe mensajes de WhatsApp via Twilio.
-    Si piden el menú, envía las 2 imágenes. Resto de mensajes los responde Claude.
+    Soporta texto, audio/notas de voz y solicitudes de menú (envía PDF).
     """
     try:
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
-            if msg.es_propio or not msg.texto:
+            if msg.es_propio:
                 continue
 
-            logger.info(f"Mensaje de {msg.telefono}: {msg.texto}")
-
             historial = await obtener_historial(msg.telefono)
+            texto_efectivo = msg.texto
 
-            if solicita_menu(msg.texto):
+            # — Audio: transcribir primero —
+            if msg.audio_url:
+                logger.info(f"Audio recibido de {msg.telefono} ({msg.audio_content_type})")
+                transcripcion = await transcribir_audio(msg.audio_url)
+
+                if not transcripcion:
+                    await guardar_mensaje(msg.telefono, "user", "[Audio no transcribible]")
+                    await guardar_mensaje(msg.telefono, "assistant", AUDIO_FALLO)
+                    await proveedor.enviar_mensaje(msg.telefono, AUDIO_FALLO)
+                    continue
+
+                logger.info(f"Transcripción de {msg.telefono}: {transcripcion}")
+                texto_efectivo = transcripcion
+
+            if not texto_efectivo:
+                continue
+
+            logger.info(f"Mensaje de {msg.telefono}: {texto_efectivo}")
+
+            # — Menú: enviar PDF —
+            if solicita_menu(texto_efectivo):
                 await proveedor.enviar_media(msg.telefono, MENU_PDF)
                 respuesta = "¡Aquí está nuestro menú completo! 🍽️😊 ¿Hay algo que te llame la atención o te gustaría pedir?"
             else:
-                respuesta = await generar_respuesta(msg.texto, historial)
+                respuesta = await generar_respuesta(texto_efectivo, historial)
 
-            await guardar_mensaje(msg.telefono, "user", msg.texto)
+            await guardar_mensaje(msg.telefono, "user", texto_efectivo)
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
             await proveedor.enviar_mensaje(msg.telefono, respuesta)
 
